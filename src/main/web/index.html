@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
     <title>mw-test-authorizationserver</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -8,19 +8,22 @@
     <script>
         let code = null;
         let state = null;
+        let access_token = null;
+        let refresh_token = null;
 
         const init = () => {
             const url = new URL(window.location.href);
             code = url.searchParams.get("code");
             state = url.searchParams.get("state");
             console.log(`code: ${code}, state: ${state}`);
+            document.getElementById("authorization_code").innerText = code;
         };
 
         const authorize = () => {
             window.location.href = "http://localhost:8090/authorize?client_id=public-client&redirect_uri=http%3A%2F%2Flocalhost%3A4200&response_type=code&scope=email"
         }
 
-        const token = async () => {
+        const tokenFromAuthorizationCode = async () => {
             const data = new URLSearchParams();
             data.append("grant_type", "authorization_code");
             data.append("code", code);
@@ -28,8 +31,23 @@
             data.append("client_id", "public-client");
             data.append("client_secret", "secret");
             const response = await axios.post("http://localhost:8090/token", data);
-            console.log(response.data.access_token)
-            document.getElementById("token").innerText = response.data.access_token;
+            access_token = response.data.access_token;
+            document.getElementById("access_token").innerText = access_token;
+            refresh_token = response.data.refresh_token;
+            document.getElementById("refresh_token").innerText = refresh_token;
+        }
+
+        const refreshToken = async () => {
+            const data = new URLSearchParams();
+            data.append("grant_type", "refresh_token");
+            data.append("refresh_token", refresh_token);
+            data.append("client_id", "public-client");
+            data.append("client_secret", "secret");
+            const response = await axios.post("http://localhost:8090/token", data);
+            access_token = response.data.access_token;
+            document.getElementById("access_token").innerText = access_token;
+            refresh_token = response.data.refresh_token;
+            document.getElementById("refresh_token").innerText = refresh_token;
         }
 
     </script>
@@ -38,16 +56,28 @@
 <body onload="init()">
     <div class="container">
 
-    <h1>Test Spring Authserver</h1>
-    <div>
-        <h2>Step 1 - authorize at authentication server</h2>
-        <button type="button" class="btn btn-primary" onclick="authorize()">authorize</button>
-    </div>
-    <div>
-        <h2>Step 2 - get token from token endpoint</h2>
-        <button type="button" class="btn btn-primary" onclick="token()">token</button>
-        <div><span id="token"></span></div>
-    </div>
+        <div class="row mt-4">
+            <h1>Test Simple OAuth</h1>
+        </div>
+        <hr/>
+        <div class="row mt-4">
+            <h2>State</h2>
+            <div>authorization_code: <span id="authorization_code"></span></div>
+            <div>access_token: <span id="access_token"></span></div>
+            <div>refresh_token: <span id="refresh_token"></span></div>
+        </div>
+        <div class="row mt-4">
+            <h2>Step 1 - authorize at authentication server</h2>
+            <button type="button" class="btn btn-primary" onclick="authorize()">authorize -> code</button>
+        </div>
+        <div class="row mt-4">
+            <h2>Step 2 - get token from token endpoint</h2>
+            <button type="button" class="btn btn-primary" onclick="tokenFromAuthorizationCode()">code -> token (access & refresh)</button>
+        </div>
+        <div class="row mt-4">
+            <h2>Step 3 - refresh token (not yet implemented)</h2>
+            <button type="button" class="btn btn-primary" onclick="refreshToken()">refresh token</button>
+        </div>
     </div>
 </body>
 

@@ -26,6 +26,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -66,7 +67,7 @@ public class OAuthRestController {
     private Map<String, String> accessTokenToUserSessionId = new ConcurrentHashMap<>();
 
     private URI getRequestUri(HttpServletRequest request) throws URISyntaxException {
-        return new URI(request.getRequestURL().toString() + "?" + request.getQueryString());
+        return new ServletServerHttpRequest(request).getURI();
     }
 
 
