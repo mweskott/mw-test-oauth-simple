@@ -15,9 +15,7 @@ import com.nimbusds.oauth2.sdk.token.RefreshToken;
 import com.nimbusds.oauth2.sdk.token.Tokens;
 import com.nimbusds.openid.connect.sdk.OIDCTokenResponse;
 import com.nimbusds.openid.connect.sdk.OIDCTokenResponseParser;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +23,7 @@ import net.minidev.json.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -34,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,13 +65,13 @@ public class OAuthRestController {
     private Map<String, UserSession> userSessionStore = new ConcurrentHashMap<>();
     private Map<String, String> accessTokenToUserSessionId = new ConcurrentHashMap<>();
 
-    private URI getRequestUri(HttpServletRequest request) throws URISyntaxException {
+    private URI getRequestUri(HttpServletRequest request) {
         return new ServletServerHttpRequest(request).getURI();
     }
 
 
     @GetMapping("/authorize")
-    public ResponseEntity<Void> authorize(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    public ResponseEntity<Void> authorize(HttpServletRequest request) throws Exception {
         AuthorizationRequest clientAuthorizationRequest = AuthorizationRequest.parse(getRequestUri(request));
 
         // check redirect url
@@ -85,9 +84,7 @@ public class OAuthRestController {
         String loginSessionId = UUID.randomUUID().toString();
         State state = new State(UUID.randomUUID().toString());
         loginSessionStore.put(loginSessionId, new LoginSession().state(state).clientAuthorizationRequest(clientAuthorizationRequest));
-        Cookie cookie = new Cookie("mw-test-oauth-simple.login-cookie", loginSessionId);
-        response.addCookie(cookie);
-
+        ResponseCookie loginSessionCookie = ResponseCookie.from("mw-test-oauth-simple.login-cookie", loginSessionId).maxAge(Duration.ofMinutes(5)).build();
         // redirect to authentication server
         AuthorizationRequest authorizationRequest = new AuthorizationRequest.Builder(
                 new ResponseType(ResponseType.Value.CODE), new ClientID(clientId))
@@ -96,13 +93,15 @@ public class OAuthRestController {
                 .redirectionURI(new URI("http://localhost:8090/login"))
                 .endpointURI(new URI("https://dev-t7n7711l.us.auth0.com/authorize"))
                 .build();
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Location", authorizationRequest.toURI().toString());
-        return new ResponseEntity<>(headers, HttpStatus.FOUND);
+
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, authorizationRequest.toURI().toString())
+                .header(HttpHeaders.SET_COOKIE, loginSessionCookie.toString())
+                .build();
     }
 
     @GetMapping("/login")
-    public ResponseEntity<Void> login(@CookieValue("mw-test-oauth-simple.login-cookie") String loginSessionId, HttpServletRequest request, HttpServletResponse response) throws Exception {
+    public ResponseEntity<Void> login(@CookieValue("mw-test-oauth-simple.login-cookie") String loginSessionId, HttpServletRequest request) throws Exception {
         AuthorizationResponse authorizationResponse = AuthorizationResponse.parse(getRequestUri(request));
 
         // Check the returned state parameter, must match the original
@@ -148,19 +147,18 @@ public class OAuthRestController {
         accessTokenToUserSessionId.put(clientAuthorizationCode, userSessionId);
 
         // remove login session cookie
-        Cookie cookie = new Cookie("mw-test-oauth-simple.login-cookie", null);
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
+        ResponseCookie deleteLoginSessionCookie = ResponseCookie.from("mw-test-oauth-simple.login-cookie").maxAge(Duration.ZERO).build();
         // redirect frontend to initial url and add code
-        HttpHeaders headers = new HttpHeaders();
         UriComponentsBuilder frontendRedirectUri = UriComponentsBuilder.fromUri(loginSession.clientAuthorizationRequest.getRedirectionURI());
         frontendRedirectUri.queryParam("code", clientAuthorizationCode);
-        headers.add("Location", frontendRedirectUri.toUriString());
-        return new ResponseEntity<>(headers, HttpStatus.FOUND);
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, frontendRedirectUri.toUriString())
+                .header(HttpHeaders.SET_COOKIE, deleteLoginSessionCookie.toString())
+                .build();
     }
 
     @PostMapping("/token")
-    public ResponseEntity<JSONObject> token(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    public ResponseEntity<JSONObject> token(HttpServletRequest request) throws Exception {
         TokenRequest tokenRequest = TokenRequest.parse(JakartaServletUtils.createHTTPRequest(request));
         ClientAuthentication clientAuthentication = tokenRequest.getClientAuthentication();
         // todo check client authentication
