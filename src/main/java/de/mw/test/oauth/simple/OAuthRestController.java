@@ -189,6 +189,16 @@ public class OAuthRestController {
                     new RefreshToken(userSessionId)));
             return ResponseEntity.ok(accessTokenResponse.toJSONObject());
         }
+        if (authorizationGrant.getType() == GrantType.REFRESH_TOKEN) {
+            RefreshToken refreshToken = ((RefreshTokenGrant) authorizationGrant).getRefreshToken();
+            String userSessionId = refreshToken.getValue();
+            String accessToken = UUID.randomUUID().toString();
+            accessTokenToUserSessionId.put(accessToken, userSessionId);
+            AccessTokenResponse accessTokenResponse = new AccessTokenResponse(new Tokens(
+                    new BearerAccessToken(accessToken, 300, null),
+                    new RefreshToken(userSessionId)));
+            return ResponseEntity.ok(accessTokenResponse.toJSONObject());
+        }
 
         return ResponseEntity.badRequest().build();
     }
