@@ -60,6 +60,7 @@ public class OAuthRestController {
     @Accessors(fluent = true)
     public static class UserSession {
         private JWTClaimsSet userClaims;
+        private String lastAccessToken;
     }
 
     private Map<String, UserSession> userSessionStore = new ConcurrentHashMap<>();
@@ -141,10 +142,10 @@ public class OAuthRestController {
         UserSession userSession = new UserSession().userClaims(idToken.getJWTClaimsSet());
         log.info("authenticated user: {}", userSession);
         String userSessionId = UUID.randomUUID().toString();
-        userSessionStore.put(userSessionId, userSession);
+        userSessionStore.put(userSessionId, userSession); // ttl authorization code
         // create authorization code
         String clientAuthorizationCode = UUID.randomUUID().toString();
-        accessTokenToUserSessionId.put(clientAuthorizationCode, userSessionId);
+        accessTokenToUserSessionId.put(clientAuthorizationCode, userSessionId); // ttl authorization code
 
         // remove login session cookie
         ResponseCookie deleteLoginSessionCookie = ResponseCookie.from("mw-test-oauth-simple.login-cookie").maxAge(Duration.ZERO).build();
@@ -180,18 +181,37 @@ public class OAuthRestController {
                 log.warn("unknown session with userSessionId: {}", userSessionId);
                 return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
             }
+            if (StringUtils.isNotBlank(userSession.lastAccessToken)) {
+                log.warn("illegal access to userSessionId: {} with authorizationCode: {}", userSessionId, authorizationCode.getValue());
+                return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+            }
+
             String accessToken = UUID.randomUUID().toString();
-            accessTokenToUserSessionId.put(accessToken, userSessionId);
+            userSession.lastAccessToken = accessToken;
+            userSessionStore.put(userSessionId, userSession); // ttl refresh token
+            accessTokenToUserSessionId.put(accessToken, userSessionId); // ttl access token
+
             AccessTokenResponse accessTokenResponse = new AccessTokenResponse(new Tokens(
-                    new BearerAccessToken(accessToken, 300, null),
+                    new BearerAccessToken(accessToken, 300, null), // ttl access token
                     new RefreshToken(userSessionId)));
             return ResponseEntity.ok(accessTokenResponse.toJSONObject());
         }
         if (authorizationGrant.getType() == GrantType.REFRESH_TOKEN) {
             RefreshToken refreshToken = ((RefreshTokenGrant) authorizationGrant).getRefreshToken();
             String userSessionId = refreshToken.getValue();
+            UserSession userSession = userSessionStore.get(userSessionId);
+            if (userSessionId == null) {
+                log.warn("unknown session with userSessionId: {}", userSessionId);
+                return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+            }
+
+            // renew access token and remove old
+            accessTokenToUserSessionId.remove(userSession.lastAccessToken);
             String accessToken = UUID.randomUUID().toString();
-            accessTokenToUserSessionId.put(accessToken, userSessionId);
+            userSession.lastAccessToken = accessToken;
+            userSessionStore.put(userSessionId, userSession); // ttl refresh token
+            accessTokenToUserSessionId.put(accessToken, userSessionId); // ttl access token
+
             AccessTokenResponse accessTokenResponse = new AccessTokenResponse(new Tokens(
                     new BearerAccessToken(accessToken, 300, null),
                     new RefreshToken(userSessionId)));
