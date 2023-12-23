@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+    <title>mw-test-authorizationserver</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <script src="axios.js"></script>
+    <script>
+        let code = null;
+        let state = null;
+
+        const init = () => {
+            const url = new URL(window.location.href);
+            code = url.searchParams.get("code");
+            state = url.searchParams.get("state");
+            console.log(`code: ${code}, state: ${state}`);
+        };
+
+        const authorize = () => {
+            window.location.href = "http://localhost:8090/authorize?client_id=public-client&redirect_uri=http%3A%2F%2Flocalhost%3A4200&response_type=code&scope=email"
+        }
+
+        const token = async () => {
+            const data = new URLSearchParams();
+            data.append("grant_type", "authorization_code");
+            data.append("code", code);
+            data.append("redirect_uri", "http://localhost:4200");
+            data.append("client_id", "public-client");
+            data.append("client_secret", "secret");
+            const response = await axios.post("http://localhost:8090/token", data);
+            console.log(response.data.access_token)
+            document.getElementById("token").innerText = response.data.access_token;
+        }
+
+    </script>
+</head>
+
+<body onload="init()">
+    <div class="container">
+
+    <h1>Test Spring Authserver</h1>
+    <div>
+        <h2>Step 1 - authorize at authentication server</h2>
+        <button type="button" class="btn btn-primary" onclick="authorize()">authorize</button>
+    </div>
+    <div>
+        <h2>Step 2 - get token from token endpoint</h2>
+        <button type="button" class="btn btn-primary" onclick="token()">token</button>
+        <div><span id="token"></span></div>
+    </div>
+    </div>
+</body>
+
+</html>
